@@ -15,7 +15,7 @@ pip install -r requirements.txt
 python chat.py
 ```
 
-Requires a running Ollama server with the `llama3.2` model pulled (`ollama pull llama3.2`).
+Requires a running Ollama server
 
 ## Architecture
 
@@ -23,4 +23,3 @@ Requires a running Ollama server with the `llama3.2` model pulled (`ollama pull 
 
 - **Tool system**: Tools are defined as Ollama JSON function specs in the `tools` list, with corresponding implementations in the `TOOL_FUNCTIONS` dict. To add a new tool, add an entry to both.
 - **Chat loop**: Maintains a `messages` list as conversation history. After each `ollama.chat()` call, if the response contains tool calls, it executes them, appends results as `role: "tool"` messages, and re-calls the model in a loop until no more tool calls remain.
-- **Model**: Uses `llama3.2` (mapped to `llama3.2:latest` in Ollama).

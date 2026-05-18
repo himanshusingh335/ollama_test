@@ -4,6 +4,10 @@ import json
 import ollama
 import requests
 
+TOOL_GREY = "\033[90m"    # dark grey for tool calls
+THINK_GREY = "\033[2;37m" # dim light grey for thinking
+RESET = "\033[0m"
+
 BASE_URL = "http://raspberrypi4.tailad9f80.ts.net:8502"
 
 SYSTEM_PROMPT = """\
@@ -157,6 +161,55 @@ def call_tool(name, args):
         return json.dumps({"error": str(e)})
 
 
+def stream_response(messages):
+    accumulated_thinking = ""
+    accumulated_content = ""
+    tool_calls = None
+    thinking_started = False
+    content_started = False
+
+    stream = ollama.chat(
+        model="qwen3.5:4b",
+        messages=messages,
+        tools=tools,
+        think=True,
+        stream=True,
+    )
+
+    for chunk in stream:
+        msg = chunk.message
+
+        if msg.thinking:
+            if not thinking_started:
+                print(f"\n{THINK_GREY}[thinking] ", end="", flush=True)
+                thinking_started = True
+            print(msg.thinking, end="", flush=True)
+            accumulated_thinking += msg.thinking
+
+        if msg.content:
+            if not content_started:
+                if thinking_started:
+                    print(RESET)  # end thinking color + newline
+                content_started = True
+            print(msg.content, end="", flush=True)
+            accumulated_content += msg.content
+
+        if msg.tool_calls:
+            tool_calls = msg.tool_calls
+
+    if content_started:
+        print()
+    elif thinking_started:
+        print(RESET)
+
+    return {
+        "role": "assistant",
+        "content": accumulated_content,
+        "thinking": accumulated_thinking or None,
+        "tool_calls": tool_calls,
+    }
+
+
 def main():
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -175,30 +228,21 @@ def main():
         messages.append({"role": "user", "content": user_input})
 
         while True:
-            response = ollama.chat(
-                model="qwen3.5:4b",
-                messages=messages,
-                tools=tools,
-                think=True,
-            )
+            msg = stream_response(messages)
 
-            if not response.message.tool_calls:
+            if not msg["tool_calls"]:
+                messages.append(msg)
                 break
 
-            for tool_call in response.message.tool_calls:
+            for tool_call in msg["tool_calls"]:
                 name = tool_call.function.name
                 args = tool_call.function.arguments
-                print(f"  [calling {name}({args})]")
+                print(f"{TOOL_GREY}  [calling {name}({args})]{RESET}")
                 result = call_tool(name, args)
-                print(f"  [result: {result}]")
+                print(f"{TOOL_GREY}  [result: {result}]{RESET}")
 
-            messages.append(response.message)
+            messages.append(msg)
             messages.append({"role": "tool", "content": result})
-
-        messages.append(response.message)
-        #if getattr(response.message, "thinking", None):
-        #    print(f"  [thinking]: {response.message.thinking}")
-        print(response.message.content)
 
 
 if __name__ == "__main__":
